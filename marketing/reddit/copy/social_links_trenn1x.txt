@@ -1,0 +1,5 @@
+Primary game link: https://c6bc-2600-1004-a031-3423-312b-3350-df45-11dc.ngrok-free.app
+GitHub: https://github.com/Trenn1x/arcane-duel-backup
+Release: https://github.com/Trenn1x/arcane-duel-backup/releases/tag/v0.3-multiplayer-beta
+Launch posts: https://github.com/Trenn1x/arcane-duel-backup/issues/1
+Room-code thread: https://github.com/Trenn1x/arcane-duel-backup/issues/2
