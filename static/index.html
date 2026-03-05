@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Beaverforge: River Dominion</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="atmosphere">
+      <div class="orb orb-a"></div>
+      <div class="orb orb-b"></div>
+      <div class="orb orb-c"></div>
+    </div>
+
+    <div id="app">
+      <section id="menu-screen" class="screen active">
+        <header class="menu-hero">
+          <p class="eyebrow">Single-Player Beaver Strategy</p>
+          <h1>Beaverforge: River Dominion</h1>
+          <p class="intro-copy">
+            Gather wood, stone, and water through habitat lanes. Upgrade your dam between battles and outbuild rival colonies.
+          </p>
+          <section class="profile-panel" aria-label="Profile manager">
+            <div class="profile-row">
+              <label for="profile-select">Colony Profile</label>
+              <select id="profile-select"></select>
+              <button id="profile-delete-btn" class="ghost" type="button">Delete</button>
+            </div>
+            <div class="profile-row profile-create">
+              <input id="profile-create-input" type="text" maxlength="24" placeholder="New profile name" />
+              <button id="profile-create-btn" class="ghost" type="button">Create</button>
+            </div>
+            <p id="profile-stats" class="profile-stats"></p>
+          </section>
+          <div class="menu-actions">
+            <button id="tutorial-btn" class="primary">Start Beaver Tutorial</button>
+            <button id="open-dam-btn" class="ghost">Enter Dam Workshop</button>
+            <button id="open-settings-btn" class="ghost">Settings</button>
+            <button id="reset-progress-btn" class="ghost">Reset Progress</button>
+          </div>
+          <p id="menu-resource-summary" class="menu-resource-summary"></p>
+        </header>
+
+        <div class="menu-grid">
+          <section class="menu-section mechanics-callout menu-mechanics">
+            <h2>Beaver Mechanics + Real Facts</h2>
+            <div class="fact-grid">
+              <article class="fact-card">
+                <h3>Wood Economy</h3>
+                <p><strong>Fact:</strong> Beavers fell trees with ever-growing incisors.</p>
+                <p><strong>Mechanic:</strong> Forest lane workers produce more wood for dam upgrades.</p>
+              </article>
+              <article class="fact-card">
+                <h3>Dam Construction</h3>
+                <p><strong>Fact:</strong> Real dams are built with branches, stones, and mud.</p>
+                <p><strong>Mechanic:</strong> Spend wood + stone in the Dam Workshop for permanent upgrades.</p>
+              </article>
+              <article class="fact-card">
+                <h3>Water Is Restorative</h3>
+                <p><strong>Fact:</strong> Beaver ponds create stable, protective wetland habitat.</p>
+                <p><strong>Mechanic:</strong> River lanes and water income provide passive restoration.</p>
+              </article>
+              <article class="fact-card">
+                <h3>Ecosystem Engineers</h3>
+                <p><strong>Fact:</strong> Beaver dams reshape landscapes and biodiversity.</p>
+                <p><strong>Mechanic:</strong> Board space is split into River, Forest, and Dam habitats.</p>
+              </article>
+            </div>
+          </section>
+
+          <section class="menu-section menu-levels">
+            <h2>Choose A Colony Rival</h2>
+            <div id="level-grid" class="level-grid"></div>
+          </section>
+
+          <section class="menu-section menu-deck">
+            <h2>Starter Colony Deck</h2>
+            <div id="starter-deck-preview" class="card-scroll"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="dam-screen" class="screen">
+        <header class="battle-topbar">
+          <button id="dam-back-btn" class="ghost">Back To Menu</button>
+          <div class="battle-title-wrap">
+            <h2>The Dam Workshop</h2>
+            <p>Invest resources to improve your colony and deck.</p>
+          </div>
+          <button id="dam-tutorial-btn" class="ghost">Tutorial</button>
+        </header>
+
+        <div class="dam-layout">
+          <aside class="dam-panel">
+            <h3>Stored Resources</h3>
+            <div class="dam-resource-grid">
+              <div class="dam-resource wood">
+                <span class="resource-label">Wood</span>
+                <span id="dam-wood" class="resource-value">0</span>
+              </div>
+              <div class="dam-resource stone">
+                <span class="resource-label">Stone</span>
+                <span id="dam-stone" class="resource-value">0</span>
+              </div>
+              <div class="dam-resource water">
+                <span class="resource-label">Water</span>
+                <span id="dam-water" class="resource-value">0</span>
+              </div>
+            </div>
+            <p class="dam-note">Win battles to haul resources back to the workshop. Losses still return a reduced haul.</p>
+          </aside>
+
+          <section class="dam-panel">
+            <h3>Dam Upgrades</h3>
+            <div id="dam-upgrade-list" class="dam-list"></div>
+          </section>
+
+          <section class="dam-panel">
+            <h3>Deck Forge</h3>
+            <div id="dam-forge-list" class="dam-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="game-screen" class="screen">
+        <header class="battle-topbar">
+          <button id="back-to-menu-btn" class="ghost">Menu</button>
+          <div class="battle-title-wrap">
+            <h2 id="battle-level-name">Level</h2>
+            <p id="battle-level-subtitle">Subtitle</p>
+          </div>
+          <button id="surrender-btn" class="ghost danger">Retreat</button>
+        </header>
+
+        <div class="battle-layout">
+          <aside class="status-column">
+            <div class="hero-panel enemy target-hero" id="enemy-hero-panel">
+              <h3 id="enemy-hero-name">Enemy Hero</h3>
+              <div class="hero-stats">
+                <div class="hero-stat">
+                  <span class="stat-label">Health</span>
+                  <span id="enemy-health" class="stat-value">0</span>
+                </div>
+                <div class="hero-stat">
+                  <span class="stat-label">Mana</span>
+                  <span id="enemy-mana" class="stat-value">0/0</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="turn-controls">
+              <p class="turn-pill">Turn <span id="turn-count">1</span></p>
+              <button id="end-turn-btn" class="primary">End Turn</button>
+              <p id="selected-attacker-text" class="hint">Select one of your minions, then target an enemy.</p>
+            </div>
+
+            <div class="hero-panel player">
+              <h3>Your Colony</h3>
+              <div class="hero-stats">
+                <div class="hero-stat">
+                  <span class="stat-label">Health</span>
+                  <span id="player-health" class="stat-value">0</span>
+                </div>
+                <div class="hero-stat">
+                  <span class="stat-label">Mana</span>
+                  <span id="player-mana" class="stat-value">0/0</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="hero-panel resources-panel">
+              <h3>Battle Haul</h3>
+              <div class="hero-stats">
+                <div class="hero-stat">
+                  <span class="stat-label">Wood</span>
+                  <span id="battle-wood" class="stat-value">0</span>
+                </div>
+                <div class="hero-stat">
+                  <span class="stat-label">Stone</span>
+                  <span id="battle-stone" class="stat-value">0</span>
+                </div>
+                <div class="hero-stat">
+                  <span class="stat-label">Water</span>
+                  <span id="battle-water" class="stat-value">0</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="hero-panel keyword-legend-panel">
+              <h3>Keyword Legend</h3>
+              <div class="keyword-legend-list">
+                <div class="keyword-legend-item">
+                  <span class="keyword-chip keyword-guard" title="Must be attacked before other enemy minions or the enemy hero.">Guard</span>
+                  <p>Must be attacked first. Includes <strong>Defender</strong> units.</p>
+                </div>
+                <div class="keyword-legend-item">
+                  <span class="keyword-chip keyword-fury" title="Can attack twice each turn once ready.">Fury</span>
+                  <p>Can attack twice each turn when ready.</p>
+                </div>
+                <div class="keyword-legend-item">
+                  <span class="keyword-chip keyword-poisonous" title="Any combat damage this minion deals destroys other minions.">Poisonous</span>
+                  <p>Any combat damage from it destroys minions.</p>
+                </div>
+                <div class="keyword-legend-item">
+                  <span class="keyword-chip keyword-lifesteal" title="Damage dealt by this minion restores its hero for the same amount.">Lifesteal</span>
+                  <p>Damage dealt restores that hero's Health.</p>
+                </div>
+              </div>
+              <p class="keyword-legend-note">Visual cues: gold frame = Guard, pulse = Fury.</p>
+            </div>
+          </aside>
+
+          <main class="board-column">
+            <section class="lane enemy-lane">
+              <h3>Enemy Habitat Board</h3>
+              <div id="enemy-board" class="board-slots"></div>
+            </section>
+
+            <section class="lane player-lane">
+              <h3>Your Habitat Board</h3>
+              <div id="player-board" class="board-slots"></div>
+            </section>
+
+            <section class="hand-zone">
+              <h3>Your Hand</h3>
+              <div id="player-hand" class="hand-cards"></div>
+            </section>
+          </main>
+
+          <aside class="log-column">
+            <h3>Battle Log</h3>
+            <div id="battle-log" class="log-feed"></div>
+          </aside>
+        </div>
+
+        <div id="result-overlay" class="result-overlay hidden">
+          <div class="result-card">
+            <h2 id="result-title">Victory</h2>
+            <p id="result-description"></p>
+            <div class="result-actions">
+              <button id="retry-level-btn" class="primary">Play Again</button>
+              <button id="return-menu-btn" class="ghost">Back To Menu</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="tutorial-overlay" class="tutorial-overlay hidden">
+          <div class="tutorial-card">
+            <p id="tutorial-step" class="tutorial-step"></p>
+            <div class="tutorial-progress" aria-hidden="true">
+              <span id="tutorial-progress-fill" class="tutorial-progress-fill"></span>
+            </div>
+            <h3 id="tutorial-title">Tutorial</h3>
+            <p id="tutorial-text" class="tutorial-text"></p>
+            <p id="tutorial-objective" class="tutorial-objective"></p>
+            <p id="tutorial-hint" class="tutorial-hint"></p>
+            <p id="tutorial-fact" class="tutorial-fact"></p>
+            <div class="tutorial-actions">
+              <button id="tutorial-prev-btn" class="ghost">Back</button>
+              <button id="tutorial-next-btn" class="primary">Next</button>
+              <button id="tutorial-close-btn" class="ghost">Skip</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="settings-overlay" class="settings-overlay hidden">
+          <div class="settings-card">
+            <h3>Game Settings</h3>
+            <p class="settings-copy">Customize pacing and audio mix. Saved on this browser.</p>
+
+            <label class="settings-row" for="settings-pace">
+              <span>Battle Pace</span>
+              <select id="settings-pace">
+                <option value="calm">Calm</option>
+                <option value="normal">Normal</option>
+                <option value="swift">Swift</option>
+              </select>
+            </label>
+
+            <label class="settings-row range" for="settings-master">
+              <span>Master Volume</span>
+              <div class="settings-range-wrap">
+                <input id="settings-master" type="range" min="0" max="100" step="1" />
+                <span id="settings-master-value" class="settings-value">0%</span>
+              </div>
+            </label>
+
+            <label class="settings-row range" for="settings-sfx">
+              <span>SFX Volume</span>
+              <div class="settings-range-wrap">
+                <input id="settings-sfx" type="range" min="0" max="100" step="1" />
+                <span id="settings-sfx-value" class="settings-value">0%</span>
+              </div>
+            </label>
+
+            <label class="settings-row range" for="settings-music">
+              <span>Music Volume</span>
+              <div class="settings-range-wrap">
+                <input id="settings-music" type="range" min="0" max="100" step="1" />
+                <span id="settings-music-value" class="settings-value">0%</span>
+              </div>
+            </label>
+
+            <div class="settings-actions">
+              <button id="settings-reset-btn" class="ghost">Reset Defaults</button>
+              <button id="settings-close-btn" class="primary">Done</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
