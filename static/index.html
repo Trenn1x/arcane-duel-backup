@@ -3,7 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0a1a2b" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Beaverforge" />
     <title>Beaverforge: River Dominion</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="icons/beaverforge-icon.svg" />
+    <link rel="apple-touch-icon" href="icons/beaverforge-icon.svg" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -16,7 +23,7 @@
     <div id="app">
       <section id="menu-screen" class="screen active">
         <header class="menu-hero">
-          <p class="eyebrow">Single-Player Beaver Strategy</p>
+          <p class="eyebrow">A trenn1x Beaver Strategy</p>
           <h1>Beaverforge: River Dominion</h1>
           <p class="intro-copy">
             Gather wood, stone, and water through habitat lanes. Upgrade your dam between battles and outbuild rival colonies.
@@ -39,6 +46,24 @@
             <button id="open-settings-btn" class="ghost">Settings</button>
             <button id="reset-progress-btn" class="ghost">Reset Progress</button>
           </div>
+          <section class="multiplayer-panel" aria-label="Online multiplayer">
+            <h2>Online Versus (Beta)</h2>
+            <p class="multiplayer-copy">Create a room code or join your cousin's code. Matches are live and turn-based.</p>
+            <div class="multiplayer-row">
+              <input id="mp-name-input" type="text" maxlength="24" placeholder="Your player name" />
+              <button id="mp-create-btn" class="primary" type="button">Create Room</button>
+            </div>
+            <div class="multiplayer-row">
+              <input id="mp-room-input" type="text" maxlength="8" placeholder="Room code" />
+              <button id="mp-join-btn" class="ghost" type="button">Join Room</button>
+            </div>
+            <div class="multiplayer-row multiplayer-actions">
+              <button id="mp-start-btn" class="primary" type="button">Start Match</button>
+              <button id="mp-copy-btn" class="ghost" type="button">Copy Invite Link</button>
+              <button id="mp-leave-btn" class="ghost" type="button">Leave Room</button>
+            </div>
+            <p id="mp-status-text" class="multiplayer-status"></p>
+          </section>
           <p id="menu-resource-summary" class="menu-resource-summary"></p>
         </header>
 
@@ -133,7 +158,13 @@
           <button id="surrender-btn" class="ghost danger">Retreat</button>
         </header>
 
-        <div class="battle-layout">
+        <div id="mobile-battle-tabs" class="mobile-battle-tabs" role="tablist" aria-label="Battle panel view">
+          <button type="button" class="mobile-pane-tab active" data-mobile-pane="board" aria-selected="true">Board</button>
+          <button type="button" class="mobile-pane-tab" data-mobile-pane="status" aria-selected="false">Colony</button>
+          <button type="button" class="mobile-pane-tab" data-mobile-pane="log" aria-selected="false">Log</button>
+        </div>
+
+        <div id="battle-layout" class="battle-layout">
           <aside class="status-column">
             <div class="hero-panel enemy target-hero" id="enemy-hero-panel">
               <h3 id="enemy-hero-name">Enemy Hero</h3>
@@ -241,6 +272,7 @@
             <div class="result-actions">
               <button id="retry-level-btn" class="primary">Play Again</button>
               <button id="return-menu-btn" class="ghost">Back To Menu</button>
+              <button id="share-result-btn" class="ghost">Share Result</button>
             </div>
           </div>
         </div>

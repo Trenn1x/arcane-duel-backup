@@ -1404,6 +1404,57 @@ button:hover:not(:disabled) {
   font-size: 0.73rem;
 }
 
+.multiplayer-panel {
+  margin-top: 0.56rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(170, 210, 236, 0.28);
+  background: linear-gradient(160deg, rgba(12, 28, 45, 0.84), rgba(8, 20, 33, 0.78));
+  padding: 0.62rem;
+  display: grid;
+  gap: 0.42rem;
+}
+
+.multiplayer-panel h2 {
+  margin: 0;
+  font-size: 0.88rem;
+}
+
+.multiplayer-copy {
+  margin: 0;
+  color: #b6cade;
+  font-size: 0.72rem;
+}
+
+.multiplayer-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.42rem;
+}
+
+.multiplayer-row input {
+  width: 100%;
+  text-transform: none;
+}
+
+.multiplayer-row button {
+  min-width: 120px;
+}
+
+.multiplayer-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.multiplayer-actions button {
+  min-width: 0;
+}
+
+.multiplayer-status {
+  margin: 0;
+  font-size: 0.73rem;
+  color: #d3e8f9;
+  min-height: 1.2em;
+}
+
 .menu-actions {
   gap: 0.44rem;
 }
@@ -2140,4 +2191,76 @@ button:hover:not(:disabled) {
   justify-content: flex-end;
   gap: 0.45rem;
   margin-top: 0.15rem;
+}
+
+.mobile-battle-tabs {
+  display: none;
+}
+
+.mobile-pane-tab {
+  background: linear-gradient(150deg, rgba(180, 218, 240, 0.15), rgba(120, 200, 238, 0.08));
+  border: 1px solid rgba(171, 210, 235, 0.3);
+  border-radius: 0.58rem;
+  color: #d5e7f6;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  min-height: 40px;
+  padding: 0.42rem 0.55rem;
+}
+
+.mobile-pane-tab.active {
+  color: #072035;
+  border-color: rgba(128, 235, 203, 0.64);
+  background: linear-gradient(140deg, #73e3ff, #86ffc3 55%, #ffd68f);
+  box-shadow: 0 8px 18px rgba(64, 196, 232, 0.28);
+}
+
+@media (max-width: 760px) {
+  .mobile-battle-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.32rem;
+    position: sticky;
+    top: 0;
+    z-index: 8;
+    background: linear-gradient(180deg, rgba(9, 22, 36, 0.95), rgba(9, 22, 36, 0.72));
+    border: 1px solid rgba(164, 206, 233, 0.24);
+    border-radius: 0.72rem;
+    padding: 0.32rem;
+    backdrop-filter: blur(10px);
+  }
+
+  #battle-layout {
+    grid-template-columns: 1fr;
+  }
+
+  #battle-layout.mobile-pane-board .status-column,
+  #battle-layout.mobile-pane-board .log-column {
+    display: none;
+  }
+
+  #battle-layout.mobile-pane-status .board-column,
+  #battle-layout.mobile-pane-status .log-column {
+    display: none;
+  }
+
+  #battle-layout.mobile-pane-log .board-column,
+  #battle-layout.mobile-pane-log .status-column {
+    display: none;
+  }
+
+  #battle-layout.mobile-pane-board .board-column,
+  #battle-layout.mobile-pane-status .status-column,
+  #battle-layout.mobile-pane-log .log-column {
+    display: grid;
+  }
+
+  .multiplayer-row {
+    grid-template-columns: 1fr;
+  }
+
+  .multiplayer-actions {
+    grid-template-columns: 1fr;
+  }
 }

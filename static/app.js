@@ -3,7 +3,10 @@ const LEGACY_PROGRESS_KEY = "beaverforgeProgressV1";
 const LEGACY_DAM_KEY = "beaverforgeDamProfileV1";
 const LEGACY_TUTORIAL_KEY = "beaverforgeTutorialSeenV1";
 const SETTINGS_KEY = "beaverforgeSettingsV1";
+const MOBILE_PANE_KEY = "beaverforgeMobilePaneV1";
+const MULTIPLAYER_NAME_KEY = "beaverforgeMultiplayerNameV1";
 const PROFILE_NAME_MAX = 24;
+const MULTIPLAYER_POLL_MS = 1200;
 
 const TURN_PACE_MULTIPLIER = {
   calm: 1.2,
@@ -26,6 +29,7 @@ const BASE_ZONE_CAPACITY = {
 
 const RESOURCE_KEYS = ["wood", "stone", "water"];
 const ZONE_ORDER = ["river", "forest", "dam"];
+const MOBILE_BATTLE_PANES = ["board", "status", "log"];
 
 const ZONE_META = {
   river: {
@@ -279,6 +283,9 @@ const state = {
   damProfile: defaultDamProfile(),
   tutorialSeen: false,
   settings: loadSettings(),
+  mobileBattlePane: loadMobileBattlePane(),
+  gameMode: "campaign",
+  multiplayer: defaultMultiplayerState(),
   tutorial: {
     active: false,
     stepIndex: 0,
@@ -307,6 +314,8 @@ const nodes = {};
 document.addEventListener("DOMContentLoaded", () => {
   cacheNodes();
   wireUi();
+  applyMobileBattlePane();
+  registerServiceWorker();
   window.addEventListener("pointerdown", primeAudio, { once: true });
   bootstrap().catch((error) => {
     console.error(error);
@@ -331,6 +340,14 @@ function cacheNodes() {
   nodes.profileCreateBtn = document.getElementById("profile-create-btn");
   nodes.profileDeleteBtn = document.getElementById("profile-delete-btn");
   nodes.profileStats = document.getElementById("profile-stats");
+  nodes.mpNameInput = document.getElementById("mp-name-input");
+  nodes.mpCreateBtn = document.getElementById("mp-create-btn");
+  nodes.mpRoomInput = document.getElementById("mp-room-input");
+  nodes.mpJoinBtn = document.getElementById("mp-join-btn");
+  nodes.mpStartBtn = document.getElementById("mp-start-btn");
+  nodes.mpCopyBtn = document.getElementById("mp-copy-btn");
+  nodes.mpLeaveBtn = document.getElementById("mp-leave-btn");
+  nodes.mpStatusText = document.getElementById("mp-status-text");
 
   nodes.damBackBtn = document.getElementById("dam-back-btn");
   nodes.damTutorialBtn = document.getElementById("dam-tutorial-btn");
@@ -342,6 +359,8 @@ function cacheNodes() {
 
   nodes.battleLevelName = document.getElementById("battle-level-name");
   nodes.battleLevelSubtitle = document.getElementById("battle-level-subtitle");
+  nodes.mobileBattleTabs = document.getElementById("mobile-battle-tabs");
+  nodes.battleLayout = document.getElementById("battle-layout");
   nodes.enemyHeroName = document.getElementById("enemy-hero-name");
   nodes.enemyHealth = document.getElementById("enemy-health");
   nodes.enemyMana = document.getElementById("enemy-mana");
@@ -369,6 +388,7 @@ function cacheNodes() {
   nodes.resultDescription = document.getElementById("result-description");
   nodes.retryLevelBtn = document.getElementById("retry-level-btn");
   nodes.returnMenuBtn = document.getElementById("return-menu-btn");
+  nodes.shareResultBtn = document.getElementById("share-result-btn");
 
   nodes.tutorialOverlay = document.getElementById("tutorial-overlay");
   nodes.tutorialStep = document.getElementById("tutorial-step");
@@ -446,6 +466,50 @@ function wireUi() {
   } else {
     console.warn("Profile controls missing from DOM; continuing without profile panel wiring.");
   }
+
+  bind(nodes.mpCreateBtn, "click", () => {
+    createMultiplayerRoom().catch((error) => {
+      console.error(error);
+      setMultiplayerStatus("Could not create room.");
+      playInputTone("rejected");
+    });
+  });
+
+  bind(nodes.mpJoinBtn, "click", () => {
+    joinMultiplayerRoom().catch((error) => {
+      console.error(error);
+      setMultiplayerStatus("Could not join room.");
+      playInputTone("rejected");
+    });
+  });
+
+  bind(nodes.mpStartBtn, "click", () => {
+    startMultiplayerMatch().catch((error) => {
+      console.error(error);
+      setMultiplayerStatus("Could not start match.");
+      playInputTone("rejected");
+    });
+  });
+
+  bind(nodes.mpCopyBtn, "click", () => {
+    copyMultiplayerInviteLink().catch((error) => {
+      console.error(error);
+      setMultiplayerStatus("Copy failed. Share the room code manually.");
+      playInputTone("rejected");
+    });
+  });
+
+  bind(nodes.mpLeaveBtn, "click", () => {
+    leaveMultiplayerRoom();
+  });
+
+  bind(nodes.mpRoomInput, "input", () => {
+    nodes.mpRoomInput.value = nodes.mpRoomInput.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  });
+
+  bind(nodes.mpNameInput, "change", () => {
+    persistMultiplayerName(nodes.mpNameInput.value);
+  });
 
   bind(nodes.levelGrid, "click", (event) => {
     const button = event.target.closest("[data-start-level]");
@@ -525,11 +589,24 @@ function wireUi() {
     purchaseForgeCard(button.dataset.forgeSlug);
   });
 
+  bind(nodes.mobileBattleTabs, "click", (event) => {
+    const button = event.target.closest("[data-mobile-pane]");
+    if (!button) return;
+    setMobileBattlePane(button.dataset.mobilePane);
+  });
+
   bind(nodes.playerHand, "click", (event) => {
     const card = event.target.closest("[data-hand-id]");
     if (!card) return;
     if (state.tutorial.active) {
       playInputTone("rejected");
+      return;
+    }
+    if (isMultiplayerMode()) {
+      playMultiplayerCard(Number(card.dataset.handId)).catch((error) => {
+        console.error(error);
+        playInputTone("rejected");
+      });
       return;
     }
     handlePlayerCardPlay(Number(card.dataset.handId));
@@ -556,6 +633,13 @@ function wireUi() {
       playInputTone("rejected");
       return;
     }
+    if (isMultiplayerMode()) {
+      multiplayerAttackTarget("minion", Number(target.dataset.targetId)).catch((error) => {
+        console.error(error);
+        playInputTone("rejected");
+      });
+      return;
+    }
     const success = performAttack("player", state.selectedAttackerId, "minion", Number(target.dataset.targetId));
     playInputTone(success ? "registered" : "rejected");
     renderGame();
@@ -570,6 +654,13 @@ function wireUi() {
       playInputTone("rejected");
       return;
     }
+    if (isMultiplayerMode()) {
+      multiplayerAttackTarget("hero").catch((error) => {
+        console.error(error);
+        playInputTone("rejected");
+      });
+      return;
+    }
     const success = performAttack("player", state.selectedAttackerId, "hero");
     playInputTone(success ? "registered" : "rejected");
     renderGame();
@@ -580,10 +671,26 @@ function wireUi() {
       playInputTone("rejected");
       return;
     }
+    if (isMultiplayerMode()) {
+      multiplayerEndTurn().catch((error) => {
+        console.error(error);
+        playInputTone("rejected");
+      });
+      return;
+    }
     executeEndTurn({ automatic: false });
   });
 
   bind(nodes.surrenderBtn, "click", () => {
+    if (isMultiplayerMode()) {
+      const confirmed = window.confirm("Leave this multiplayer room and return to menu?");
+      if (!confirmed) {
+        playInputTone("rejected");
+        return;
+      }
+      leaveMultiplayerRoom();
+      return;
+    }
     if (!state.game || state.game.phase === "ended") {
       playInputTone("rejected");
       return;
@@ -594,6 +701,15 @@ function wireUi() {
   });
 
   bind(nodes.backToMenuBtn, "click", () => {
+    if (isMultiplayerMode()) {
+      const confirmed = window.confirm("Leave multiplayer room and return to menu?");
+      if (!confirmed) {
+        playInputTone("rejected");
+        return;
+      }
+      leaveMultiplayerRoom();
+      return;
+    }
     if (state.tutorial.active) {
       closeTutorial(false);
     }
@@ -613,6 +729,13 @@ function wireUi() {
   });
 
   bind(nodes.retryLevelBtn, "click", () => {
+    if (isMultiplayerMode()) {
+      startMultiplayerMatch().catch((error) => {
+        console.error(error);
+        playInputTone("rejected");
+      });
+      return;
+    }
     if (!state.game) {
       playInputTone("rejected");
       return;
@@ -624,12 +747,23 @@ function wireUi() {
   });
 
   bind(nodes.returnMenuBtn, "click", () => {
+    if (isMultiplayerMode()) {
+      leaveMultiplayerRoom();
+      return;
+    }
     playInputTone("registered");
     state.game = null;
     state.selectedAttackerId = null;
     hideResult();
     showScreen("menu");
     renderMenu();
+  });
+
+  bind(nodes.shareResultBtn, "click", () => {
+    shareCurrentResult().catch((error) => {
+      console.error(error);
+      playInputTone("rejected");
+    });
   });
 
   bind(nodes.tutorialPrevBtn, "click", () => {
@@ -738,6 +872,14 @@ function wireUi() {
       nodes.tutorialCloseBtn?.click();
     }
   });
+
+  bind(document, "visibilitychange", () => {
+    if (document.hidden) {
+      setMusicMode("off");
+    } else {
+      syncMusicToGameState();
+    }
+  });
 }
 
 async function bootstrap() {
@@ -761,6 +903,8 @@ async function bootstrap() {
   renderSettings();
   applyAudioSettings();
   setMusicMode("menu");
+  hydrateMultiplayerInviteFromUrl();
+  renderMultiplayerPanel();
 }
 
 function defaultProgress() {
@@ -789,6 +933,52 @@ function defaultSettings() {
   };
 }
 
+function sanitizeMultiplayerName(value) {
+  const cleaned = String(value || "").trim().replace(/\s+/g, " ");
+  if (!cleaned) return "";
+  return cleaned.slice(0, PROFILE_NAME_MAX);
+}
+
+function loadMultiplayerName() {
+  try {
+    const raw = localStorage.getItem(MULTIPLAYER_NAME_KEY);
+    return sanitizeMultiplayerName(raw);
+  } catch (_error) {
+    return "";
+  }
+}
+
+function persistMultiplayerName(value) {
+  const name = sanitizeMultiplayerName(value);
+  state.multiplayer.name = name;
+  try {
+    localStorage.setItem(MULTIPLAYER_NAME_KEY, name);
+  } catch (_error) {
+    // Ignore storage failures in private or restricted browser contexts.
+  }
+  if (nodes.mpNameInput && nodes.mpNameInput.value !== name) {
+    nodes.mpNameInput.value = name;
+  }
+  return name;
+}
+
+function defaultMultiplayerState() {
+  return {
+    roomCode: "",
+    token: "",
+    side: "",
+    name: loadMultiplayerName(),
+    opponentName: "",
+    status: "idle",
+    statusText: "Create a room or join a cousin's code.",
+    isHost: false,
+    canStart: false,
+    active: false,
+    pollTimer: null,
+    revision: 0,
+  };
+}
+
 function normalizeSettings(settings) {
   const baseline = defaultSettings();
   const clean = settings && typeof settings === "object" ? settings : baseline;
@@ -802,6 +992,27 @@ function normalizeSettings(settings) {
     sfxVolume: clamp(clean.sfxVolume),
     musicVolume: clamp(clean.musicVolume),
   };
+}
+
+function normalizeMobileBattlePane(value) {
+  return MOBILE_BATTLE_PANES.includes(value) ? value : "board";
+}
+
+function loadMobileBattlePane() {
+  try {
+    const raw = localStorage.getItem(MOBILE_PANE_KEY);
+    return normalizeMobileBattlePane(raw);
+  } catch (_error) {
+    return "board";
+  }
+}
+
+function saveMobileBattlePane() {
+  try {
+    localStorage.setItem(MOBILE_PANE_KEY, state.mobileBattlePane);
+  } catch (_error) {
+    // Ignore storage failures in private or restricted browser contexts.
+  }
 }
 
 function loadSettings() {
@@ -1250,6 +1461,8 @@ function renderMenu() {
     nodes.menuResourceSummary.textContent = `${state.activeProfileName} stores: ${resourceString(state.damProfile.resources)}`;
   }
 
+  renderMultiplayerPanel();
+
   if (nodes.levelGrid) {
     nodes.levelGrid.innerHTML = state.levels
     .map((level) => {
@@ -1400,6 +1613,11 @@ function buildPlayerDeckTemplate() {
 }
 
 async function startLevel(levelId, options = {}) {
+  if (isMultiplayerMode()) {
+    leaveMultiplayerRoom({ withTone: false });
+  }
+  state.gameMode = "campaign";
+
   if (levelId > state.progress.unlocked) {
     if (!options.silentTone) {
       playInputTone("rejected");
@@ -2301,6 +2519,14 @@ function finishGame(won, title, description) {
 
   nodes.resultTitle.textContent = title;
   nodes.resultDescription.textContent = `${description} Resource haul: ${resourceString(payout)}.`;
+  if (nodes.retryLevelBtn) {
+    nodes.retryLevelBtn.style.display = "";
+    nodes.retryLevelBtn.disabled = false;
+    nodes.retryLevelBtn.textContent = "Play Again";
+  }
+  if (nodes.returnMenuBtn) {
+    nodes.returnMenuBtn.textContent = "Back To Menu";
+  }
   nodes.resultOverlay.classList.remove("hidden");
 
   playInputTone(won ? "victory" : "defeat");
@@ -2309,6 +2535,80 @@ function finishGame(won, title, description) {
 
 function hideResult() {
   nodes.resultOverlay.classList.add("hidden");
+}
+
+function buildShareText() {
+  if (!state.game) {
+    return "Playing Beaverforge by trenn1x.";
+  }
+
+  const modeText = isMultiplayerMode() ? "Online Versus" : "Campaign";
+  const title = state.game.level?.name || "Beaverforge Match";
+  const outcome = state.game.outcome || "in progress";
+  const normalizedOutcome =
+    outcome === "victory" ? "Victory" : outcome === "defeat" ? "Defeat" : outcome === "draw" ? "Draw" : "In Progress";
+  const harvest = state.game.playerBattleResources || { wood: 0, stone: 0, water: 0 };
+  const roomText = isMultiplayerMode() && state.multiplayer.roomCode ? `Room ${state.multiplayer.roomCode}` : "";
+  const link = window.location.href.split("?")[0];
+
+  return [
+    `trenn1x Beaverforge update: ${normalizedOutcome} in ${modeText}`,
+    `${title}${roomText ? ` (${roomText})` : ""}`,
+    `Haul W${harvest.wood || 0}/S${harvest.stone || 0}/Wa${harvest.water || 0}`,
+    `Play: ${link}`,
+  ].join(" | ");
+}
+
+async function shareCurrentResult() {
+  const text = buildShareText();
+  const sharePayload = {
+    title: "Beaverforge: River Dominion",
+    text,
+    url: window.location.href.split("?")[0],
+  };
+
+  if (navigator.share) {
+    await navigator.share(sharePayload);
+    setMultiplayerStatus("Result shared.");
+    playInputTone("registered");
+    return;
+  }
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    await navigator.clipboard.writeText(text);
+  } else {
+    window.prompt("Copy your share text:", text);
+  }
+  setMultiplayerStatus("Result text copied.");
+  playInputTone("registered");
+}
+
+function renderMultiplayerResultOverlay() {
+  if (!isMultiplayerMode() || !state.game || state.game.phase !== "ended") {
+    if (isMultiplayerMode()) {
+      hideResult();
+      if (nodes.retryLevelBtn) nodes.retryLevelBtn.style.display = "";
+      if (nodes.returnMenuBtn) nodes.returnMenuBtn.textContent = "Back To Menu";
+    }
+    return;
+  }
+
+  const outcome = state.game.outcome;
+  if (nodes.resultTitle) {
+    nodes.resultTitle.textContent = outcome === "victory" ? "Victory" : outcome === "defeat" ? "Defeat" : "Draw";
+  }
+  if (nodes.resultDescription) {
+    nodes.resultDescription.textContent = `Multiplayer match ended in room ${state.multiplayer.roomCode}.`;
+  }
+  if (nodes.retryLevelBtn) {
+    nodes.retryLevelBtn.style.display = state.multiplayer.isHost ? "" : "none";
+    nodes.retryLevelBtn.textContent = "Rematch";
+    nodes.retryLevelBtn.disabled = !state.multiplayer.isHost;
+  }
+  if (nodes.returnMenuBtn) {
+    nodes.returnMenuBtn.textContent = "Leave Room";
+  }
+  nodes.resultOverlay.classList.remove("hidden");
 }
 
 function formatKeyword(keyword) {
@@ -2394,8 +2694,12 @@ function renderGame() {
   renderBoardLane(nodes.playerBoard, game.playerBoard, "player", null);
   renderHand(game);
   renderLog(game);
+  renderMobileBattleTabs();
 
-  maybeAutoEndPlayerTurn();
+  if (!isMultiplayerMode()) {
+    maybeAutoEndPlayerTurn();
+  }
+  renderMultiplayerResultOverlay();
   syncMusicToGameState();
 }
 
@@ -2590,6 +2894,357 @@ function renderSettings() {
   }
 }
 
+function isMultiplayerMode() {
+  return state.gameMode === "multiplayer" && Boolean(state.multiplayer.roomCode) && Boolean(state.multiplayer.token);
+}
+
+function normalizeRoomCode(value) {
+  return String(value || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 8);
+}
+
+function setMultiplayerStatus(text) {
+  state.multiplayer.statusText = text;
+  renderMultiplayerPanel();
+}
+
+function renderMultiplayerPanel() {
+  if (!nodes.mpStatusText || !nodes.mpNameInput) return;
+
+  const hasRoom = Boolean(state.multiplayer.roomCode);
+  const connected = hasRoom && Boolean(state.multiplayer.token);
+  const waiting = state.multiplayer.status === "waiting";
+  const active = state.multiplayer.status === "active" || state.multiplayer.status === "ended";
+
+  nodes.mpNameInput.value = state.multiplayer.name || "";
+  if (nodes.mpRoomInput && !connected) {
+    nodes.mpRoomInput.value = normalizeRoomCode(nodes.mpRoomInput.value || state.multiplayer.roomCode);
+  } else if (nodes.mpRoomInput && state.multiplayer.roomCode) {
+    nodes.mpRoomInput.value = state.multiplayer.roomCode;
+  }
+
+  if (nodes.mpCreateBtn) {
+    nodes.mpCreateBtn.disabled = connected;
+  }
+  if (nodes.mpJoinBtn) {
+    nodes.mpJoinBtn.disabled = connected;
+  }
+  if (nodes.mpStartBtn) {
+    nodes.mpStartBtn.disabled = !connected || !state.multiplayer.isHost || !state.multiplayer.canStart;
+  }
+  if (nodes.mpCopyBtn) {
+    nodes.mpCopyBtn.disabled = !connected;
+  }
+  if (nodes.mpLeaveBtn) {
+    nodes.mpLeaveBtn.disabled = !connected;
+  }
+
+  if (state.multiplayer.statusText) {
+    nodes.mpStatusText.textContent = state.multiplayer.statusText;
+  } else if (waiting) {
+    nodes.mpStatusText.textContent = `Room ${state.multiplayer.roomCode}: waiting for opponent...`;
+  } else if (active) {
+    const modeLabel = state.multiplayer.status === "ended" ? "Match ended" : "Live match";
+    nodes.mpStatusText.textContent = `${modeLabel} in room ${state.multiplayer.roomCode} vs ${state.multiplayer.opponentName || "opponent"}.`;
+  } else {
+    nodes.mpStatusText.textContent = "Create a room or join a cousin's code.";
+  }
+}
+
+function hydrateMultiplayerInviteFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const joinCode = normalizeRoomCode(params.get("join"));
+  if (!joinCode || !nodes.mpRoomInput) return;
+
+  nodes.mpRoomInput.value = joinCode;
+  setMultiplayerStatus(`Invite detected. Enter your name and join room ${joinCode}.`);
+}
+
+function getMultiplayerInviteLink(roomCode) {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("join", roomCode);
+  return url.toString();
+}
+
+async function copyMultiplayerInviteLink() {
+  if (!state.multiplayer.roomCode) {
+    playInputTone("rejected");
+    return;
+  }
+
+  const link = getMultiplayerInviteLink(state.multiplayer.roomCode);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    await navigator.clipboard.writeText(link);
+  } else {
+    window.prompt("Copy invite link:", link);
+  }
+  setMultiplayerStatus(`Invite link copied for room ${state.multiplayer.roomCode}.`);
+  playInputTone("registered");
+}
+
+function stopMultiplayerPolling() {
+  if (!state.multiplayer.pollTimer) return;
+  window.clearInterval(state.multiplayer.pollTimer);
+  state.multiplayer.pollTimer = null;
+}
+
+function startMultiplayerPolling() {
+  stopMultiplayerPolling();
+  state.multiplayer.pollTimer = window.setInterval(() => {
+    pollMultiplayerState(true).catch((error) => {
+      console.error(error);
+    });
+  }, MULTIPLAYER_POLL_MS);
+}
+
+function applyMultiplayerSnapshot(snapshot, { forceGameScreen = false } = {}) {
+  if (!snapshot || typeof snapshot !== "object") return;
+
+  state.multiplayer.status = snapshot.status || "idle";
+  state.multiplayer.roomCode = normalizeRoomCode(snapshot.roomCode || state.multiplayer.roomCode);
+  state.multiplayer.side = snapshot.side || state.multiplayer.side;
+  state.multiplayer.isHost = Boolean(snapshot.isHost);
+  state.multiplayer.canStart = Boolean(snapshot.canStart);
+  state.multiplayer.opponentName = snapshot.opponent || "";
+  state.multiplayer.revision = Number(snapshot.revision || state.multiplayer.revision || 0);
+  state.multiplayer.statusText = snapshot.message || state.multiplayer.statusText;
+
+  if (snapshot.status === "active" || snapshot.status === "ended") {
+    state.gameMode = "multiplayer";
+    state.multiplayer.active = true;
+    if (snapshot.game) {
+      state.game = snapshot.game;
+      if (forceGameScreen || state.screen !== "game") {
+        showScreen("game");
+      }
+      renderGame();
+    }
+  } else {
+    state.multiplayer.active = false;
+    state.game = state.gameMode === "multiplayer" ? null : state.game;
+    state.selectedAttackerId = null;
+    if (state.screen === "game" && state.gameMode === "multiplayer") {
+      showScreen("menu");
+    }
+  }
+
+  renderMultiplayerPanel();
+}
+
+function applyMultiplayerEnvelope(payload, options = {}) {
+  if (!payload || typeof payload !== "object") return;
+  if (payload.token) {
+    state.multiplayer.token = payload.token;
+  }
+  if (payload.side) {
+    state.multiplayer.side = payload.side;
+  }
+  if (payload.roomCode) {
+    state.multiplayer.roomCode = normalizeRoomCode(payload.roomCode);
+  }
+  const snapshot = payload.state || payload;
+  applyMultiplayerSnapshot(snapshot, options);
+}
+
+async function pollMultiplayerState(silent = false) {
+  if (!state.multiplayer.roomCode || !state.multiplayer.token) return null;
+  const params = new URLSearchParams({
+    roomCode: state.multiplayer.roomCode,
+    token: state.multiplayer.token,
+  });
+
+  try {
+    const snapshot = await fetchJson(`/api/multiplayer/state?${params.toString()}`);
+    applyMultiplayerSnapshot(snapshot);
+    return snapshot;
+  } catch (error) {
+    if (!silent) {
+      setMultiplayerStatus("Unable to refresh room state.");
+      playInputTone("rejected");
+    }
+    throw error;
+  }
+}
+
+async function createMultiplayerRoom() {
+  primeAudio();
+  const fallbackName = state.activeProfileName || "Beaver";
+  const name = persistMultiplayerName(nodes.mpNameInput?.value || fallbackName) || fallbackName;
+  const payload = await postJson("/api/multiplayer/create", { name });
+
+  state.gameMode = "multiplayer";
+  applyMultiplayerEnvelope(payload);
+  startMultiplayerPolling();
+  setMultiplayerStatus(`Room ${state.multiplayer.roomCode} created. Share code with your cousin.`);
+  playInputTone("registered");
+}
+
+async function joinMultiplayerRoom() {
+  primeAudio();
+  const roomCode = normalizeRoomCode(nodes.mpRoomInput?.value || state.multiplayer.roomCode);
+  if (!roomCode) {
+    playInputTone("rejected");
+    setMultiplayerStatus("Enter a valid room code.");
+    return;
+  }
+
+  const fallbackName = state.activeProfileName || "Beaver";
+  const name = persistMultiplayerName(nodes.mpNameInput?.value || fallbackName) || fallbackName;
+  const payload = await postJson("/api/multiplayer/join", { roomCode, name });
+
+  state.gameMode = "multiplayer";
+  applyMultiplayerEnvelope(payload);
+  startMultiplayerPolling();
+  setMultiplayerStatus(`Joined room ${state.multiplayer.roomCode}. Host can start the match.`);
+  playInputTone("registered");
+}
+
+async function startMultiplayerMatch() {
+  if (!state.multiplayer.roomCode || !state.multiplayer.token) {
+    playInputTone("rejected");
+    return;
+  }
+  const payload = await postJson("/api/multiplayer/start", {
+    roomCode: state.multiplayer.roomCode,
+    token: state.multiplayer.token,
+  });
+  applyMultiplayerEnvelope(payload, { forceGameScreen: true });
+  playInputTone("level_start");
+}
+
+async function multiplayerAction(path, payload = {}) {
+  if (!isMultiplayerMode()) {
+    playInputTone("rejected");
+    return null;
+  }
+  const envelope = await postJson(path, {
+    roomCode: state.multiplayer.roomCode,
+    token: state.multiplayer.token,
+    ...payload,
+  });
+  applyMultiplayerEnvelope(envelope, { forceGameScreen: true });
+  return envelope;
+}
+
+async function playMultiplayerCard(instanceId) {
+  if (!state.game || state.game.phase !== "player") {
+    playInputTone("rejected");
+    return;
+  }
+  await multiplayerAction("/api/multiplayer/play", { instanceId });
+  playInputTone("registered");
+}
+
+async function multiplayerAttackTarget(targetType, targetId = null) {
+  if (!state.game || state.game.phase !== "player") {
+    playInputTone("rejected");
+    return;
+  }
+  if (!state.selectedAttackerId) {
+    playInputTone("rejected");
+    return;
+  }
+  await multiplayerAction("/api/multiplayer/attack", {
+    attackerId: state.selectedAttackerId,
+    targetType,
+    targetId,
+  });
+  state.selectedAttackerId = null;
+  playInputTone("registered");
+}
+
+async function multiplayerEndTurn() {
+  if (!state.game || state.game.phase !== "player") {
+    playInputTone("rejected");
+    return;
+  }
+  await multiplayerAction("/api/multiplayer/end-turn");
+  state.selectedAttackerId = null;
+  playInputTone("registered");
+}
+
+function leaveMultiplayerRoom({ withTone = true } = {}) {
+  stopMultiplayerPolling();
+
+  const keptName = state.multiplayer.name || loadMultiplayerName();
+  state.multiplayer = defaultMultiplayerState();
+  state.multiplayer.name = keptName;
+  persistMultiplayerName(keptName);
+
+  state.gameMode = "campaign";
+  state.game = null;
+  state.selectedAttackerId = null;
+  hideResult();
+  closeTutorial(false);
+  showScreen("menu");
+  renderMenu();
+  setMultiplayerStatus("Left multiplayer room.");
+  if (withTone) {
+    playInputTone("registered");
+  }
+}
+
+function renderMobileBattleTabs() {
+  if (!nodes.mobileBattleTabs) return;
+
+  const buttons = nodes.mobileBattleTabs.querySelectorAll("[data-mobile-pane]");
+  buttons.forEach((button) => {
+    const isActive = button.dataset.mobilePane === state.mobileBattlePane;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+}
+
+function applyMobileBattlePane() {
+  state.mobileBattlePane = normalizeMobileBattlePane(state.mobileBattlePane);
+
+  if (nodes.battleLayout) {
+    MOBILE_BATTLE_PANES.forEach((pane) => {
+      nodes.battleLayout.classList.toggle(`mobile-pane-${pane}`, pane === state.mobileBattlePane);
+    });
+  }
+
+  renderMobileBattleTabs();
+}
+
+function setMobileBattlePane(pane, { persist = true, withTone = true } = {}) {
+  const normalized = normalizeMobileBattlePane(pane);
+  const changed = normalized !== state.mobileBattlePane;
+  state.mobileBattlePane = normalized;
+
+  applyMobileBattlePane();
+  if (persist) {
+    saveMobileBattlePane();
+  }
+
+  if (changed && withTone) {
+    playInputTone("registered");
+  }
+}
+
+function inferMobilePaneFromSelector(selector) {
+  if (!selector) return null;
+
+  if (selector === "#battle-log") return "log";
+  if (selector === "#player-board" || selector === "#enemy-board" || selector === "#player-hand") return "board";
+  if (
+    selector === "#battle-wood" ||
+    selector === "#battle-stone" ||
+    selector === "#battle-water" ||
+    selector === "#selected-attacker-text" ||
+    selector === "#end-turn-btn" ||
+    selector === ".resources-panel"
+  ) {
+    return "status";
+  }
+
+  return null;
+}
+
 function openSettings() {
   if (!nodes.settingsOverlay) return;
   if (state.tutorial.active) {
@@ -2696,6 +3351,13 @@ function highlightTutorialTarget(selector) {
   clearTutorialHighlight();
   if (!selector) return;
 
+  if (window.matchMedia("(max-width: 760px)").matches) {
+    const pane = inferMobilePaneFromSelector(selector);
+    if (pane) {
+      setMobileBattlePane(pane, { persist: false, withTone: false });
+    }
+  }
+
   const target = document.querySelector(selector);
   if (!target) return;
 
@@ -2717,6 +3379,7 @@ function showScreen(name) {
   nodes.menuScreen.classList.toggle("active", name === "menu");
   nodes.damScreen.classList.toggle("active", name === "dam");
   nodes.gameScreen.classList.toggle("active", name === "game");
+  applyMobileBattlePane();
 
   if (name !== "game") {
     clearAutoEndTurnTimer();
@@ -3288,10 +3951,38 @@ function syncMusicToGameState() {
   }
 }
 
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch((error) => {
+      console.warn("Service worker registration failed:", error);
+    });
+  });
+}
+
 async function fetchJson(path) {
   const response = await fetch(path, { headers: { Accept: "application/json" } });
   if (!response.ok) {
     throw new Error(`Request failed (${response.status}) for ${path}`);
   }
   return response.json();
+}
+
+async function postJson(path, payload) {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload || {}),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.ok === false) {
+    const message = data && data.error ? data.error : `Request failed (${response.status}) for ${path}`;
+    throw new Error(message);
+  }
+  return data;
 }

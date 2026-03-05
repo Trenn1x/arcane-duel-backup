@@ -1,0 +1,19 @@
+{
+  "name": "Beaverforge: River Dominion",
+  "short_name": "Beaverforge",
+  "description": "Single-player beaver strategy card battles with dam upgrades, tutorial flow, and habitat lanes.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a1a2b",
+  "theme_color": "#0a1a2b",
+  "icons": [
+    {
+      "src": "/icons/beaverforge-icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
