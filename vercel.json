@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/index.py" },
+    { "src": "/manifest.webmanifest", "dest": "/static/manifest.webmanifest" },
+    { "src": "/sw.js", "dest": "/static/sw.js" },
+    { "src": "/icons/(.*)", "dest": "/static/icons/$1" },
+    { "src": "/styles.css", "dest": "/static/styles.css" },
+    { "src": "/app.js", "dest": "/static/app.js" },
+    { "src": "/", "dest": "/static/index.html" },
+    { "src": "/(.*)", "dest": "/static/$1" }
+  ]
+}

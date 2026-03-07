@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 import json
-import os
 import re
 import sqlite3
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -12,22 +11,8 @@ from init_db import initialize_db
 from multiplayer import MultiplayerManager
 
 
-BASE_DIR = Path(__file__).resolve().parent
-STATIC_DIR = BASE_DIR / "static"
+BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "game.db"
-HOST = os.environ.get("BEAVERFORGE_HOST", "0.0.0.0")
-
-
-def read_port() -> int:
-    raw = os.environ.get("BEAVERFORGE_PORT") or os.environ.get("PORT") or "8080"
-    try:
-        value = int(raw)
-    except ValueError:
-        value = 8080
-    return max(1, min(65535, value))
-
-
-PORT = read_port()
 MULTIPLAYER = MultiplayerManager()
 
 
@@ -72,12 +57,9 @@ def level_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
-class ArcaneDuelHandler(SimpleHTTPRequestHandler):
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
-
+class handler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: Any) -> None:
-        super().log_message(format, *args)
+        return
 
     def send_json(self, payload: Any, status: int = 200) -> None:
         encoded = json.dumps(payload).encode("utf-8")
@@ -106,49 +88,19 @@ class ArcaneDuelHandler(SimpleHTTPRequestHandler):
             raise ValueError("Invalid JSON payload") from exc
 
     def get_connection(self) -> sqlite3.Connection:
+        if not DB_PATH.exists():
+            initialize_db(DB_PATH)
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         return conn
 
-    def fetch_cards(self, conn: sqlite3.Connection, where_clause: str = "", params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
-        query = """
-            SELECT id, slug, name, description, card_type, rarity, school,
-                   cost, attack, health, effect_on_play, effect_value, keywords,
-                   habitat, wood_yield, stone_yield, water_yield,
-                   palette_start, palette_end, accent, starter_copies
-            FROM cards
-        """
-        if where_clause:
-            query += f" WHERE {where_clause}"
-        query += " ORDER BY cost, id"
-        rows = conn.execute(query, params).fetchall()
-        return [card_row_to_dict(row) for row in rows]
-
-    @staticmethod
-    def expand_deck(cards: list[dict[str, Any]], copies_map: dict[int, int]) -> list[dict[str, Any]]:
-        expanded = []
-        for card in cards:
-            copies = copies_map.get(card["id"], 1)
-            expanded.extend([card] * copies)
-        return expanded
-
-    def handle_cards(self) -> None:
-        with self.get_connection() as conn:
-            cards = self.fetch_cards(conn)
-        self.send_json({"cards": cards})
-
-    def handle_levels(self) -> None:
-        with self.get_connection() as conn:
-            rows = conn.execute(
-                """
-                SELECT id, name, subtitle, enemy_hero, enemy_health, ai_difficulty,
-                       intro, card_back_start, card_back_end
-                FROM levels
-                ORDER BY id
-                """
-            ).fetchall()
-            levels = [level_row_to_dict(row) for row in rows]
-        self.send_json({"levels": levels})
+    def send_multiplayer_result(self, result: dict[str, Any]) -> None:
+        status_value = result.get("httpStatus", result.get("status", 200))
+        status = int(status_value) if isinstance(status_value, int) else 200
+        payload = {key: value for key, value in result.items() if key != "httpStatus"}
+        if isinstance(payload.get("status"), int):
+            payload.pop("status", None)
+        self.send_json(payload, status=status)
 
     def load_starter_deck(self) -> list[dict[str, Any]]:
         with self.get_connection() as conn:
@@ -170,9 +122,34 @@ class ArcaneDuelHandler(SimpleHTTPRequestHandler):
             starter_deck.extend([card] * card["starterCopies"])
         return starter_deck
 
+    def handle_cards(self) -> None:
+        with self.get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, slug, name, description, card_type, rarity, school,
+                       cost, attack, health, effect_on_play, effect_value, keywords,
+                       habitat, wood_yield, stone_yield, water_yield,
+                       palette_start, palette_end, accent, starter_copies
+                FROM cards
+                ORDER BY cost, id
+                """
+            ).fetchall()
+        self.send_json({"cards": [card_row_to_dict(row) for row in rows]})
+
+    def handle_levels(self) -> None:
+        with self.get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, name, subtitle, enemy_hero, enemy_health, ai_difficulty,
+                       intro, card_back_start, card_back_end
+                FROM levels
+                ORDER BY id
+                """
+            ).fetchall()
+        self.send_json({"levels": [level_row_to_dict(row) for row in rows]})
+
     def handle_starter_deck(self) -> None:
-        starter_deck = self.load_starter_deck()
-        self.send_json({"starterDeck": starter_deck})
+        self.send_json({"starterDeck": self.load_starter_deck()})
 
     def handle_level(self, level_id: int) -> None:
         with self.get_connection() as conn:
@@ -204,67 +181,12 @@ class ArcaneDuelHandler(SimpleHTTPRequestHandler):
                 (level_id,),
             ).fetchall()
 
-            enemy_deck = []
-            for row in deck_rows:
-                card = card_row_to_dict(row)
-                enemy_deck.extend([card] * row["copies"])
+        enemy_deck: list[dict[str, Any]] = []
+        for row in deck_rows:
+            card = card_row_to_dict(row)
+            enemy_deck.extend([card] * row["copies"])
 
-            level = level_row_to_dict(level_row)
-
-        self.send_json({"level": level, "enemyDeck": enemy_deck})
-
-    def send_multiplayer_result(self, result: dict[str, Any]) -> None:
-        status_value = result.get("httpStatus", result.get("status", 200))
-        status = int(status_value) if isinstance(status_value, int) else 200
-        payload = {key: value for key, value in result.items() if key != "httpStatus"}
-        if isinstance(payload.get("status"), int):
-            payload.pop("status", None)
-        self.send_json(payload, status=status)
-
-    def handle_multiplayer_create(self, body: dict[str, Any]) -> None:
-        result = MULTIPLAYER.create_room(body.get("name", "Beaver"))
-        self.send_multiplayer_result(result)
-
-    def handle_multiplayer_join(self, body: dict[str, Any]) -> None:
-        result = MULTIPLAYER.join_room(body.get("roomCode", ""), body.get("name", "Beaver"))
-        self.send_multiplayer_result(result)
-
-    def handle_multiplayer_start(self, body: dict[str, Any]) -> None:
-        starter_deck = self.load_starter_deck()
-        result = MULTIPLAYER.start_room(
-            room_code=body.get("roomCode", ""),
-            token=body.get("token", ""),
-            starter_cards=starter_deck,
-        )
-        self.send_multiplayer_result(result)
-
-    def handle_multiplayer_state(self, query: dict[str, list[str]]) -> None:
-        room_code = query.get("roomCode", [""])[0]
-        token = query.get("token", [""])[0]
-        result = MULTIPLAYER.get_state(room_code=room_code, token=token)
-        self.send_multiplayer_result(result)
-
-    def handle_multiplayer_play(self, body: dict[str, Any]) -> None:
-        result = MULTIPLAYER.play_card(
-            room_code=body.get("roomCode", ""),
-            token=body.get("token", ""),
-            instance_id=body.get("instanceId"),
-        )
-        self.send_multiplayer_result(result)
-
-    def handle_multiplayer_attack(self, body: dict[str, Any]) -> None:
-        result = MULTIPLAYER.attack(
-            room_code=body.get("roomCode", ""),
-            token=body.get("token", ""),
-            attacker_id=body.get("attackerId"),
-            target_type=body.get("targetType", ""),
-            target_id=body.get("targetId"),
-        )
-        self.send_multiplayer_result(result)
-
-    def handle_multiplayer_end_turn(self, body: dict[str, Any]) -> None:
-        result = MULTIPLAYER.end_turn(room_code=body.get("roomCode", ""), token=body.get("token", ""))
-        self.send_multiplayer_result(result)
+        self.send_json({"level": level_row_to_dict(level_row), "enemyDeck": enemy_deck})
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
@@ -285,13 +207,16 @@ class ArcaneDuelHandler(SimpleHTTPRequestHandler):
         if level_match:
             self.handle_level(int(level_match.group(1)))
             return
+
         if path == "/api/multiplayer/state":
-            self.handle_multiplayer_state(query)
+            result = MULTIPLAYER.get_state(
+                room_code=query.get("roomCode", [""])[0],
+                token=query.get("token", [""])[0],
+            )
+            self.send_multiplayer_result(result)
             return
 
-        if path == "/":
-            self.path = "/index.html"
-        super().do_GET()
+        self.send_json({"ok": False, "error": "Unknown endpoint"}, status=404)
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
@@ -303,40 +228,42 @@ class ArcaneDuelHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/multiplayer/create":
-            self.handle_multiplayer_create(body)
+            result = MULTIPLAYER.create_room(body.get("name", "Beaver"))
+            self.send_multiplayer_result(result)
             return
         if path == "/api/multiplayer/join":
-            self.handle_multiplayer_join(body)
+            result = MULTIPLAYER.join_room(body.get("roomCode", ""), body.get("name", "Beaver"))
+            self.send_multiplayer_result(result)
             return
         if path == "/api/multiplayer/start":
-            self.handle_multiplayer_start(body)
+            result = MULTIPLAYER.start_room(
+                room_code=body.get("roomCode", ""),
+                token=body.get("token", ""),
+                starter_cards=self.load_starter_deck(),
+            )
+            self.send_multiplayer_result(result)
             return
         if path == "/api/multiplayer/play":
-            self.handle_multiplayer_play(body)
+            result = MULTIPLAYER.play_card(
+                room_code=body.get("roomCode", ""),
+                token=body.get("token", ""),
+                instance_id=body.get("instanceId"),
+            )
+            self.send_multiplayer_result(result)
             return
         if path == "/api/multiplayer/attack":
-            self.handle_multiplayer_attack(body)
+            result = MULTIPLAYER.attack(
+                room_code=body.get("roomCode", ""),
+                token=body.get("token", ""),
+                attacker_id=body.get("attackerId"),
+                target_type=body.get("targetType", ""),
+                target_id=body.get("targetId"),
+            )
+            self.send_multiplayer_result(result)
             return
         if path == "/api/multiplayer/end-turn":
-            self.handle_multiplayer_end_turn(body)
+            result = MULTIPLAYER.end_turn(room_code=body.get("roomCode", ""), token=body.get("token", ""))
+            self.send_multiplayer_result(result)
             return
 
         self.send_json({"ok": False, "error": "Unknown endpoint"}, status=404)
-
-
-def run() -> None:
-    if not DB_PATH.exists():
-        initialize_db(DB_PATH)
-
-    server = ThreadingHTTPServer((HOST, PORT), ArcaneDuelHandler)
-    print(f"Arcane Duel server running at http://{HOST}:{PORT}")
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\nShutting down server.")
-    finally:
-        server.server_close()
-
-
-if __name__ == "__main__":
-    run()
